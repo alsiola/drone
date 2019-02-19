@@ -1,0 +1,14 @@
+{
+  "name": "drone",
+  "version": "1.0.0",
+  "main": "lib/index.js",
+  "author": "Alex Young",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^11.9.4",
+    "typescript": "^3.3.3"
+  },
+  "dependencies": {
+    "io-ts": "^1.8.2"
+  }
+}
