@@ -10,15 +10,14 @@ const body = t.interface({
 export const getSurveyById = drone.controller({
     route: "/",
     method: HTTP_METHOD.GET,
-    body,
+    body: body,
     inject: {
         i18n
     },
-    implement: ({ body: { surveyId }, logger, i18n, user }) => {
-        logger.info(`A message from ${user.id}`);
-
-        i18n.translate("test");
-
-        return new RestResult({ survey: { id: surveyId } });
+    implement: ({ body: { surveyId }, user }) => {
+        return new RestResult(200, {
+            survey: { id: surveyId },
+            user: user.name
+        });
     }
 });

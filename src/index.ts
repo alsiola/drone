@@ -1,31 +1,30 @@
 import * as t from "io-ts";
+import express from "express";
+import bodyParser = require("body-parser");
+import * as Logger from "bunyan";
 
 export enum HTTP_METHOD {
-    GET = "GET",
-    POST = "POST"
+    GET = "get",
+    POST = "post"
 }
 
 export class RestResult<T> {
-    constructor(private result?: T) {}
-}
+    constructor(private status: number = 200, private result?: T) {}
 
-interface Logger {
-    info: (msg?: string) => void;
+    public send(res: express.Response) {
+        res.status(this.status).send(this.result);
+    }
 }
 
 type ImplementationArgs<
-    TBody extends t.Props | null,
+    TBody extends t.Props,
     TQuery extends t.Props | null,
     TParams extends t.Props | null,
     TInjected,
     TAppInjected
 > = TInjected &
     TAppInjected & {
-        body: TBody extends null
-            ? never
-            : TBody extends t.Props
-            ? t.TypeOf<t.TypeC<TBody>>
-            : never;
+        body: TBody extends null ? null : t.TypeOf<t.TypeC<TBody>>;
         query: TQuery extends null
             ? never
             : TQuery extends t.Props
@@ -50,7 +49,7 @@ type Injected<
 
 interface ControllerArgs<
     TApp extends Record<string, Injection<{}, any>>,
-    TBody extends t.Props | null,
+    TBody extends t.Props,
     TQuery extends t.Props | null,
     TParams extends t.Props | null,
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
@@ -73,15 +72,13 @@ interface ControllerArgs<
     ) => RestResult<TResult> | Promise<RestResult<TResult>>;
 }
 
-type InjectionArgs<T> = T & {
-    request: { path: "string" };
-};
+type InjectionArgs<T> = T & { request: express.Request };
 
 export type Injection<T, U> = (a: InjectionArgs<T>) => U;
 
 type ControllerCreator<TApp extends Record<string, Injection<{}, any>>> = <
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
-    TBody extends t.Props | null = null,
+    TBody extends t.Props,
     TQuery extends t.Props | null = null,
     TParams extends t.Props | null = null,
     TResult = {}
@@ -94,18 +91,111 @@ interface AppArgs<T> {
     logger: Logger;
 }
 
-export const app = <T extends Record<string, Injection<{}, any>>>(
-    a: AppArgs<T>
-) => {
+const validate = <T extends t.Props>(
+    shape: t.TypeC<T> | undefined,
+    candidate: unknown
+): [boolean, T | null] => {
+    if (!shape) {
+        return [true, null];
+    }
+
+    if (shape.is(candidate)) {
+        return [true, candidate];
+    }
+
+    return [false, null];
+};
+
+export const app = <T extends Record<string, Injection<{}, any>>>({
+    inject: appInjectors,
+    logger
+}: AppArgs<T>) => {
+    const expressApp = express();
+    expressApp.use(bodyParser.json());
+
+    const injectGlobal = (
+        injectors: T & Injection<Injected<{}, T>, any>,
+        request: express.Request
+    ) => {
+        return Object.entries(injectors).reduce((out, [key, injector]) => {
+            try {
+                (out as any)[key] = injector({ request });
+            } catch (err) {
+                logger.error({ injector: key, err }, "Error running injector");
+            } finally {
+                return out;
+            }
+        }, {});
+    };
+
+    const createController: ControllerCreator<T> = ({
+        route,
+        method,
+        body,
+        params,
+        query,
+        inject: controllerInjectors,
+        implement
+    }) => {
+        return {
+            use: () => {
+                expressApp[method](route, async (req, res) => {
+                    const [isBodyValid, validBody] = validate(body, req.body);
+                    const [isQueryValid, validQuery] = validate(
+                        query,
+                        req.query
+                    );
+                    const [isParamsValid, validParams] = validate(
+                        params,
+                        req.params
+                    );
+
+                    if (!isBodyValid || !isQueryValid || !isParamsValid) {
+                        return res.status(400).send("Invalid request");
+                    }
+
+                    try {
+                        const result = await implement({
+                            body: validBody,
+                            query: validQuery,
+                            params: validParams,
+                            logger,
+                            ...injectGlobal(
+                                {
+                                    ...(appInjectors as object),
+                                    ...(controllerInjectors as object)
+                                } as (T & Injection<Injected<{}, T>, any>),
+                                req
+                            )
+                        } as any);
+
+                        result.send(res);
+                    } catch (err) {
+                        logger.error(
+                            { err, route, method },
+                            "Controller failed"
+                        );
+                        res.status(500).send("Error");
+                    }
+                });
+            },
+            test: args => implement(args)
+        };
+    };
     return {
-        controller: ({} as any) as ControllerCreator<T>,
-        listen: (port: number) => Promise.resolve()
+        controller: createController,
+        use: (controller: Controller<T, any, any, any, any, any>) =>
+            controller.use(),
+        listen: (port: number) =>
+            new Promise(resolve => {
+                expressApp.listen(port, resolve);
+            })
     };
 };
 
 interface Controller<
     TApp extends Record<string, Injection<{}, any>>,
-    TBody extends t.Props | null,
+    TBody extends t.Props,
     TQuery extends t.Props | null,
     TParams extends t.Props | null,
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
