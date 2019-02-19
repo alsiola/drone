@@ -1,13 +1,11 @@
 import * as t from "io-ts";
 import { app, HTTP_METHOD, RestResult, Injection } from "../src";
 
-type User = Injection<{}, { name: string; id: string}>
+type User = Injection<{}, { name: string; id: string }>;
 
-const user: User = ({
-    request
-}) => ({
-        id: "333",
-        name: request.path
+const user: User = ({ request }) => ({
+    id: "333",
+    name: request.path
 });
 
 const drone = app({
@@ -16,12 +14,12 @@ const drone = app({
     }
 });
 
-type I18n = Injection<{ user: { name: string; id: string} }, { translate: (a: string) => string }>
+type I18n = Injection<
+    { user: { name: string; id: string } },
+    { translate: (a: string) => string }
+>;
 
-const i18n: I18n = ({
-    request,
-    user
-}) => ({
+const i18n: I18n = ({ request, user }) => ({
     translate: (a: string) => user.id
 });
 
@@ -37,7 +35,8 @@ export const getSurveyById = drone.controller({
         i18n
     },
     implement: ({ body: { surveyId }, logger, i18n, user }) => {
-        logger.info("A message");
+        logger.info(`A message from ${user.id}`);
+        i18n.translate("test");
         return new RestResult({ survey: { id: surveyId } });
     }
 });
