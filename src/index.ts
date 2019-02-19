@@ -17,10 +17,10 @@ type ImplementationArgs<
     TBody extends t.Props | null,
     TQuery extends t.Props | null,
     TParams extends t.Props | null,
-    TInject,
-    TAppInject
-> = TInject &
-    TAppInject & {
+    TInjected,
+    TAppInjected
+> = TInjected &
+    TAppInjected & {
         body: TBody extends null
             ? never
             : TBody extends t.Props
@@ -79,7 +79,7 @@ type InjectionArgs<T> = T & {
 
 export type Injection<T, U> = (a: InjectionArgs<T>) => U;
 
-type Controller<TApp extends Record<string, Injection<{}, any>>> = <
+type ControllerCreator<TApp extends Record<string, Injection<{}, any>>> = <
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
     TBody extends t.Props | null = null,
     TQuery extends t.Props | null = null,
@@ -87,16 +87,38 @@ type Controller<TApp extends Record<string, Injection<{}, any>>> = <
     TResult = {}
 >(
     a: ControllerArgs<TApp, TBody, TQuery, TParams, TInject, TResult>
-) => void;
+) => Controller<TApp, TBody, TQuery, TParams, TInject, TResult>;
 
 interface AppArgs<T> {
     inject: T;
+    logger: Logger;
 }
 
 export const app = <T extends Record<string, Injection<{}, any>>>(
     a: AppArgs<T>
 ) => {
     return {
-        controller: ({} as any) as Controller<T>
+        controller: ({} as any) as ControllerCreator<T>,
+        listen: (port: number) => Promise.resolve()
     };
 };
+
+interface Controller<
+    TApp extends Record<string, Injection<{}, any>>,
+    TBody extends t.Props | null,
+    TQuery extends t.Props | null,
+    TParams extends t.Props | null,
+    TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
+    TResult
+> {
+    use: () => void;
+    test: (
+        a: ImplementationArgs<
+            TBody,
+            TQuery,
+            TParams,
+            Injected<TApp, TInject>,
+            Injected<{}, TApp>
+        >
+    ) => RestResult<TResult> | Promise<RestResult<TResult>>;
+}
