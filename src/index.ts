@@ -1,7 +1,9 @@
 import * as t from "io-ts";
+import { PathReporter } from "io-ts/lib/PathReporter";
 import express from "express";
 import bodyParser from "body-parser";
 import * as Logger from "bunyan";
+import { Right, Either } from "fp-ts/lib/Either";
 
 export enum HTTP_METHOD {
     GET = "get",
@@ -102,16 +104,12 @@ interface AppArgs<T> {
 const validate = <T extends t.Props>(
     shape: t.TypeC<T> | undefined,
     candidate: unknown
-): [boolean, T | null] => {
+): Either<t.Errors, T | null> => {
     if (!shape) {
-        return [true, null];
+        return new Right(null);
     }
 
-    if (shape.is(candidate)) {
-        return [true, candidate];
-    }
-
-    return [false, null];
+    return shape.validate(candidate, []);
 };
 
 const reduceAsync = <T, U>(
@@ -175,18 +173,24 @@ export const app = <T extends Record<string, Injection<{}, any>>>({
         return {
             use: () => {
                 expressApp[method](route, async (req, res) => {
-                    const [isBodyValid, validBody] = validate(body, req.body);
-                    const [isQueryValid, validQuery] = validate(
-                        query,
-                        req.query
-                    );
-                    const [isParamsValid, validParams] = validate(
-                        params,
-                        req.params
-                    );
+                    const bodyResult = validate(body, req.body);
+                    const queryResult = validate(query, req.query);
+                    const paramsResult = validate(params, req.params);
 
-                    if (!isBodyValid || !isQueryValid || !isParamsValid) {
-                        return res.status(400).send("Invalid request");
+                    const errors = {
+                        ...(bodyResult.isLeft() && {
+                            body: PathReporter.report(bodyResult)
+                        }),
+                        ...(queryResult.isLeft() && {
+                            query: PathReporter.report(queryResult)
+                        }),
+                        ...(paramsResult.isLeft() && {
+                            params: PathReporter.report(paramsResult)
+                        })
+                    };
+
+                    if (Object.keys(errors).length > 0) {
+                        return new RestResult(400, { errors }).send(res);
                     }
 
                     try {
@@ -203,9 +207,9 @@ export const app = <T extends Record<string, Injection<{}, any>>>({
                         }
 
                         const result = await implement({
-                            body: validBody,
-                            query: validQuery,
-                            params: validParams,
+                            body: bodyResult.value,
+                            query: queryResult.value,
+                            params: paramsResult.value,
                             logger,
                             ...injectionResult
                         } as any);
@@ -224,6 +228,9 @@ export const app = <T extends Record<string, Injection<{}, any>>>({
         };
     };
     return {
+        /**
+         * Create a new drone controller
+         */
         controller: createController,
         use: (usable: Usable) => usable.use(),
         listen: (port: number) =>
