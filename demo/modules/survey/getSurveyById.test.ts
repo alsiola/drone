@@ -1,19 +1,15 @@
-import { RestResult } from "../../../src";
+import { RestResult, createMockLogger } from "../../../src";
 import { getSurveyById } from "./getSurveyById";
 
 describe("getSurveyById", () => {
-    let logger: any;
     let i18n: any;
+    let logger: any;
+    let spies: Record<"info", jest.Mock<any, any>>;
 
     beforeEach(() => {
-        logger = new Proxy(
-            {},
-            {
-                get(target, prop) {
-                    return (...msg: any[]) => console.log(String(prop), ...msg);
-                }
-            }
-        );
+        const mockLoggerAndSpies = createMockLogger("info");
+        logger = mockLoggerAndSpies.logger;
+        spies = mockLoggerAndSpies.spies;
 
         i18n = {
             translate: (a: string) => a
@@ -38,9 +34,11 @@ describe("getSurveyById", () => {
 
         const expected = new RestResult(200, {
             survey: { id: "12" },
-            user: "Alex"
+            user: "Alex",
+            name: "Pete"
         });
 
         expect(actual).toEqual(expected);
+        expect(spies.info).toBeCalledWith("getSurveyById");
     });
 });
