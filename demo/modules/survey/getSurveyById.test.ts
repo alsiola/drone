@@ -1,4 +1,4 @@
-import { app, Drone, RestResult } from "../../../src";
+import { RestResult } from "../../../src";
 import { getSurveyById } from "./getSurveyById";
 
 describe("getSurveyById", () => {

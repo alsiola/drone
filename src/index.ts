@@ -1,6 +1,6 @@
 import * as t from "io-ts";
 import express from "express";
-import bodyParser = require("body-parser");
+import bodyParser from "body-parser";
 import * as Logger from "bunyan";
 
 export enum HTTP_METHOD {
