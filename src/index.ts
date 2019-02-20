@@ -19,7 +19,7 @@ export class RestResult<T> {
 }
 
 type ImplementationArgs<
-    TBody extends t.Props,
+    TBody extends t.Props | null,
     TQuery extends t.Props | null,
     TParams extends t.Props | null,
     TInjected,
@@ -63,7 +63,7 @@ type Injected<
 
 interface ControllerArgs<
     TApp extends Record<string, Injection<{}, any>>,
-    TBody extends t.Props,
+    TBody extends t.Props | null,
     TQuery extends t.Props | null,
     TParams extends t.Props | null,
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
@@ -88,7 +88,7 @@ interface ControllerArgs<
 
 type ControllerCreator<TApp extends Record<string, Injection<{}, any>>> = <
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
-    TBody extends t.Props,
+    TBody extends t.Props | null = null,
     TQuery extends t.Props | null = null,
     TParams extends t.Props | null = null,
     TResult = {}
@@ -124,6 +124,28 @@ const reduceAsync = <T, U>(
 };
 
 export type Drone = ReturnType<typeof app>;
+
+const validateParams = <TParams extends t.Props>(
+    route: string,
+    params: t.TypeC<TParams>
+) => {
+    const matchedParams = route.match(/:([^\/]*)/g);
+
+    Object.keys(params.props).forEach(key => {
+        if (!matchedParams) {
+            throw new Error(
+                `Missing param in path: ${key} is defined in controller but not in route`
+            );
+        }
+        const matchingParam = matchedParams.find(p => `:${key}` === p);
+
+        if (!matchingParam) {
+            throw new Error(
+                `Missing param in path: ${key} is defined in controller but not in route`
+            );
+        }
+    });
+};
 
 export const app = <T extends Record<string, Injection<{}, any>>>({
     inject: appInjectors,
@@ -170,6 +192,9 @@ export const app = <T extends Record<string, Injection<{}, any>>>({
         inject: controllerInjectors,
         implement
     }) => {
+        if (params) {
+            validateParams(route, params);
+        }
         return {
             use: () => {
                 expressApp[method](route, async (req, res) => {
@@ -249,7 +274,7 @@ interface Usable {
 
 interface Controller<
     TApp extends Record<string, Injection<{}, any>>,
-    TBody extends t.Props,
+    TBody extends t.Props | null,
     TQuery extends t.Props | null,
     TParams extends t.Props | null,
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,

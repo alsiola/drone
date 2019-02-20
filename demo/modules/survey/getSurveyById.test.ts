@@ -30,6 +30,9 @@ describe("getSurveyById", () => {
             user: {
                 id: "1",
                 name: "Alex"
+            },
+            params: {
+                name: "Pete"
             }
         });
 

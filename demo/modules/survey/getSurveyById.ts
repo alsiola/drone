@@ -7,18 +7,30 @@ const body = t.interface({
     surveyId: t.string
 });
 
+const params = t.interface({
+    name: t.string
+});
+
 export const getSurveyById = drone.controller({
-    route: "/",
+    route: "/:name",
     method: HTTP_METHOD.GET,
     body,
+    params,
     inject: {
         i18n
     },
-    implement: ({ body, user, i18n, logger }) => {
+    implement: ({
+        body: { surveyId },
+        user,
+        i18n,
+        logger,
+        params: { name }
+    }) => {
         logger.info("getSurveyById");
         return new RestResult(200, {
-            survey: { id: body.surveyId },
-            user: i18n.translate(user.name)
+            survey: { id: surveyId },
+            user: i18n.translate(user.name),
+            name
         });
     }
 });
