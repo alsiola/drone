@@ -1,20 +1,46 @@
 {
-  "name": "drone",
-  "version": "1.0.0",
-  "main": "lib/index.js",
-  "author": "Alex Young",
-  "license": "MIT",
-  "devDependencies": {
-    "@types/body-parser": "^1.17.0",
-    "@types/bunyan": "^1.8.5",
-    "@types/express": "^4.16.1",
-    "@types/node": "^11.9.4",
-    "typescript": "^3.3.3"
-  },
-  "dependencies": {
-    "body-parser": "^1.18.3",
-    "bunyan": "^1.8.12",
-    "express": "^4.16.4",
-    "io-ts": "^1.8.2"
-  }
+    "name": "drone",
+    "version": "1.0.0",
+    "main": "lib/index.js",
+    "author": "Alex Young",
+    "license": "MIT",
+    "scripts": {
+        "test": "jest"
+    },
+    "devDependencies": {
+        "@types/body-parser": "^1.17.0",
+        "@types/bunyan": "^1.8.5",
+        "@types/express": "^4.16.1",
+        "@types/jest": "^24.0.6",
+        "@types/node": "^11.9.4",
+        "jest": "^24.1.0",
+        "ts-jest": "^24.0.0",
+        "typescript": "^3.3.3"
+    },
+    "dependencies": {
+        "body-parser": "^1.18.3",
+        "bunyan": "^1.8.12",
+        "express": "^4.16.4",
+        "io-ts": "^1.8.2"
+    },
+    "jest": {
+        "transform": {
+            "^.+\\.tsx?$": "ts-jest"
+        },
+        "testPathIgnorePatterns": [
+            "/node_modules/",
+            "/lib/"
+        ],
+        "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$",
+        "moduleFileExtensions": [
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "json"
+        ],
+        "collectCoverageFrom": [
+            "src/**/*"
+        ]
+    }
 }

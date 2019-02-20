@@ -23,28 +23,40 @@ type ImplementationArgs<
     TInjected,
     TAppInjected
 > = TInjected &
-    TAppInjected & {
-        body: TBody extends null ? null : t.TypeOf<t.TypeC<TBody>>;
-        query: TQuery extends null
-            ? never
-            : TQuery extends t.Props
-            ? t.TypeOf<t.TypeC<TQuery>>
-            : never;
-        params: TParams extends null
-            ? never
-            : TParams extends t.Props
-            ? t.TypeOf<t.TypeC<TParams>>
-            : never;
+    TAppInjected &
+    (TQuery extends null
+        ? {}
+        : TQuery extends t.Props
+        ? { query: t.TypeOf<t.TypeC<TQuery>> }
+        : {}) &
+    (TBody extends null
+        ? {}
+        : TBody extends t.Props
+        ? { body: t.TypeOf<t.TypeC<TBody>> }
+        : {}) &
+    (TParams extends null
+        ? {}
+        : TParams extends t.Props
+        ? { params: t.TypeOf<t.TypeC<TParams>> }
+        : {}) & {
         logger: Logger;
     };
+
+type InjectionArgs<T> = T & { request: express.Request };
+
+export type Injection<T, U> = (
+    a: InjectionArgs<T>
+) => U | RestResult<any> | Promise<RestResult<any>>;
+
+type DePromise<T> = T extends Promise<infer U> ? U : T;
 
 type Injected<
     TApp extends Record<string, Injection<{}, any>>,
     T extends Record<string, Injection<Injected<{}, TApp>, any>>
 > = {
-    [K in keyof T]: ReturnType<T[K]> extends Promise<infer ITK>
-        ? ITK
-        : ReturnType<T[K]>
+    [K in keyof T]: DePromise<
+        Exclude<ReturnType<T[K]>, RestResult<any> | Promise<RestResult<any>>>
+    >
 };
 
 interface ControllerArgs<
@@ -71,10 +83,6 @@ interface ControllerArgs<
         >
     ) => RestResult<TResult> | Promise<RestResult<TResult>>;
 }
-
-type InjectionArgs<T> = T & { request: express.Request };
-
-export type Injection<T, U> = (a: InjectionArgs<T>) => U;
 
 type ControllerCreator<TApp extends Record<string, Injection<{}, any>>> = <
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
@@ -106,6 +114,19 @@ const validate = <T extends t.Props>(
     return [false, null];
 };
 
+const reduceAsync = <T, U>(
+    a: T[],
+    seed: U,
+    f: (a: U, b: T) => U
+): Promise<U> => {
+    return a.reduce(async (prev, next) => {
+        const result = await prev;
+        return f(result, next);
+    }, Promise.resolve(seed));
+};
+
+export type Drone = ReturnType<typeof app>;
+
 export const app = <T extends Record<string, Injection<{}, any>>>({
     inject: appInjectors,
     logger
@@ -113,19 +134,33 @@ export const app = <T extends Record<string, Injection<{}, any>>>({
     const expressApp = express();
     expressApp.use(bodyParser.json());
 
-    const injectGlobal = (
+    const runInjectors = (
         injectors: T & Injection<Injected<{}, T>, any>,
         request: express.Request
     ) => {
-        return Object.entries(injectors).reduce((out, [key, injector]) => {
-            try {
-                (out as any)[key] = injector({ request });
-            } catch (err) {
-                logger.error({ injector: key, err }, "Error running injector");
-            } finally {
-                return out;
+        return reduceAsync(
+            Object.entries(injectors),
+            {},
+            async (out, [key, injector]) => {
+                try {
+                    if (out instanceof RestResult) {
+                        return out;
+                    }
+                    const injectorResult = await injector({ request, ...out });
+                    if (injectorResult instanceof RestResult) {
+                        return injectorResult;
+                    }
+                    (out as any)[key] = injectorResult;
+                    return out;
+                } catch (err) {
+                    logger.error(
+                        { injector: key, err },
+                        "Error running injector"
+                    );
+                    return out;
+                }
             }
-        }, {});
+        );
     };
 
     const createController: ControllerCreator<T> = ({
@@ -155,18 +190,24 @@ export const app = <T extends Record<string, Injection<{}, any>>>({
                     }
 
                     try {
+                        const injectionResult = await runInjectors(
+                            {
+                                ...(appInjectors as object),
+                                ...(controllerInjectors as object)
+                            } as (T & Injection<Injected<{}, T>, any>),
+                            req
+                        );
+
+                        if (injectionResult instanceof RestResult) {
+                            return injectionResult.send(res);
+                        }
+
                         const result = await implement({
                             body: validBody,
                             query: validQuery,
                             params: validParams,
                             logger,
-                            ...injectGlobal(
-                                {
-                                    ...(appInjectors as object),
-                                    ...(controllerInjectors as object)
-                                } as (T & Injection<Injected<{}, T>, any>),
-                                req
-                            )
+                            ...injectionResult
                         } as any);
 
                         result.send(res);
@@ -184,14 +225,20 @@ export const app = <T extends Record<string, Injection<{}, any>>>({
     };
     return {
         controller: createController,
-        use: (controller: Controller<T, any, any, any, any, any>) =>
-            controller.use(),
+        use: (usable: Usable) => usable.use(),
         listen: (port: number) =>
             new Promise(resolve => {
                 expressApp.listen(port, resolve);
-            })
+            }),
+        module: (...controllers: Controller<T, any, any, any, any, any>[]) => ({
+            use: () => controllers.forEach(controller => controller.use())
+        })
     };
 };
+
+interface Usable {
+    use: () => void;
+}
 
 interface Controller<
     TApp extends Record<string, Injection<{}, any>>,
