@@ -12,7 +12,7 @@ const params = t.interface({
 });
 
 export const getSurveyById = drone.controller({
-    route: "/:name",
+    path: "/:name",
     method: HTTP_METHOD.GET,
     body,
     params,

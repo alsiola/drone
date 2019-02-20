@@ -69,7 +69,7 @@ interface ControllerArgs<
     TInject extends Record<string, Injection<Injected<{}, TApp>, {}>>,
     TResult
 > {
-    route: string;
+    path: string;
     method: HTTP_METHOD;
     body?: TBody extends t.Props ? t.TypeC<TBody> : never;
     query?: TQuery extends t.Props ? t.TypeC<TQuery> : never;
@@ -184,7 +184,7 @@ export const app = <T extends Record<string, Injection<{}, any>>>({
     };
 
     const createController: ControllerCreator<T> = ({
-        route,
+        path: route,
         method,
         body,
         params,
